@@ -23,20 +23,19 @@ jobs:
       - name: Trigger 24h Reminders
         run: |
           echo "📡 Calling Supabase Edge Function..."
-          echo "Project Ref: ${{ secrets.SUPABASE_PROJECT_REF }}"
-          echo "Anon Key: ${{ secrets.SUPABASE_ANON_KEY }}"
 
-          # Use hardcoded project reference for now
+          # Hardcoded values
           PROJECT_REF="nbjuhxzjgegjvigsstljy"
+          ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec"
           URL="https://${PROJECT_REF}.supabase.co/functions/v1/send-reminders"
           
           echo "Calling URL: $URL"
 
           response=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${ANON_KEY}" \
             -H "Content-Type: application/json" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            "$URL")
+            -H "apikey: ${ANON_KEY}" \
+            "${URL}")
 
           echo "Response: $response"
 
