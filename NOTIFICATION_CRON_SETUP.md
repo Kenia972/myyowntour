@@ -2,12 +2,12 @@
 
 ## Overview
 
-This guide provides **complete setup instructions** for the Myowntour notification system using **Supabase Edge Functions** (Option 1). The system includes:
+This guide provides **complete setup instructions** for the Myowntour notification system using **Supabase Edge Functions** and **Cron-job.org** for reliable scheduling. The system includes:
 
 - ✅ **Real-time notifications** for booking events
-- ✅ **24-hour automated reminders** via Edge Functions
+- ✅ **24-hour automated reminders** via Cron-job.org
 - ✅ **Email and in-app notifications**
-- ✅ **GitHub Actions automation**
+- ✅ **Resend email service** with domain verification
 - ✅ **Complete monitoring and analytics**
 
 ## 🎯 Quick Start (5 Minutes)
@@ -44,13 +44,70 @@ supabase functions deploy send-email
 supabase functions deploy send-reminders
 ```
 
-### Step 5: Test the System
+### Step 5: Set Up Cron-job.org (24h Reminders)
+1. **Go to [cron-job.org](https://cron-job.org/)**
+2. **Create a free account**
+3. **Add a new cron job:**
+   - **Title:** `Myowntour 24h Reminders`
+   - **URL:** `https://nbjuhxzjgegjvigsstljy.supabase.co/functions/v1/send-reminders`
+   - **Method:** `POST`
+   - **Headers:**
+     - `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec`
+     - `Content-Type: application/json`
+   - **Schedule:** `0 9 * * *` (daily at 9 AM UTC)
+4. **Test the cron job immediately**
+
+### Step 6: Verify Domain with Resend (Production Setup)
+
+#### **A. Add Domain to Resend**
+1. **Go to [Resend Dashboard](https://resend.com/domains)**
+2. **Click "Add Domain"**
+3. **Enter your domain:** `myowntour.com`
+4. **Click "Add"**
+
+#### **B. Add DNS Records in Ionos**
+1. **Log into your Ionos control panel**
+2. **Go to "Domains & SSL" → "DNS"**
+3. **Select your domain:** `myowntour.com`
+4. **Add these DNS records:**
+
+   **TXT Record for Verification:**
+   ```
+   Type: TXT
+   Name: @ (or leave empty)
+   Value: resend._domainkey.myowntour.com
+   TTL: 3600
+   ```
+
+   **DKIM Record for Email Authentication:**
+   ```
+   Type: CNAME
+   Name: resend._domainkey
+   Value: resend._domainkey.resend.com
+   TTL: 3600
+   ```
+
+#### **C. Verify Domain in Resend**
+1. **Go back to Resend Dashboard**
+2. **Click "Verify" next to your domain**
+3. **Wait for verification** (5-30 minutes)
+4. **Status should change to "Verified"**
+
+#### **D. Update Edge Function for Production**
+Once verified, update your Edge Function to use your domain:
+
+```typescript
+// In supabase/functions/send-email/index.ts
+from: 'Myowntour <noreply@myowntour.com>',
+```
+
+### Step 7: Test the System
 ```bash
 # Test the Edge Function
 curl -X POST \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec" \
   -H "Content-Type: application/json" \
-  https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-reminders
+  https://nbjuhxzjgegjvigsstljy.supabase.co/functions/v1/send-reminders
 ```
 
 **That's it! Your notification system is now live! 🎉**
@@ -388,23 +445,50 @@ curl -X POST \
   https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-reminders
 ```
 
-### 4. GitHub Actions Setup
+### 4. Cron-job.org Setup (24h Reminders)
 
-#### Step 1: Add Repository Secrets
-Go to your GitHub repository → Settings → Secrets and variables → Actions
+#### Step 1: Create Cron-job.org Account
+1. **Go to [cron-job.org](https://cron-job.org/)**
+2. **Click "Sign Up" (free account)**
+3. **Verify your email address**
 
-Add these secrets:
-- `SUPABASE_PROJECT_REF`: Your Supabase project reference
-- `SUPABASE_ACCESS_TOKEN`: Your Supabase access token
-- `SUPABASE_ANON_KEY`: Your Supabase anonymous key
+#### Step 2: Create the Cron Job
+1. **Click "Create cronjob"**
+2. **Fill in these exact settings:**
 
-#### Step 2: Verify Workflow File
-The workflow file `.github/workflows/send-reminders.yml` is already created and ready to use.
+   **Basic Settings:**
+   - **Title:** `Myowntour 24h Reminders`
+   - **URL:** `https://nbjuhxzjgegjvigsstljy.supabase.co/functions/v1/send-reminders`
+   - **Method:** `POST`
 
-#### Step 3: Test GitHub Actions
-1. Go to your repository's Actions tab
-2. Find "Send 24h Reminders" workflow
-3. Click "Run workflow" to test manually
+   **Headers:**
+   - **Header 1:**
+     - **Name:** `Authorization`
+     - **Value:** `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec`
+   
+   - **Header 2:**
+     - **Name:** `Content-Type`
+     - **Value:** `application/json`
+
+   **Schedule:**
+   - **Schedule Type:** `Daily`
+   - **Time:** `09:00` (UTC)
+   - **Timezone:** `UTC`
+
+   **Advanced Settings:**
+   - **Timeout:** `30 seconds`
+   - **Retry on failure:** `Yes`
+   - **Max retries:** `3`
+
+3. **Click "Create cronjob"**
+
+#### Step 3: Test the Cron Job
+1. **After creating the cron job, click "Test now"**
+2. **Check the result** - should show success
+3. **Look at the response** - should be: `{"success":true,"count":0,"message":"Sent 0 reminder notifications"}`
+4. **Set up monitoring** (optional):
+   - **Email notifications** for failures
+   - **Webhook notifications** for status updates
 
 ### 5. Resend Configuration
 
@@ -440,7 +524,7 @@ Add the Resend API key to your Supabase Edge Function environment:
 
 #### Step 4: Update Environment Variables
 ```env
-VITE_RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+VITE_RESEND_API_KEY=re_cj9pzt7o_K4MZfz7YUVX7QuuN1erBetue
 ```
 
 ### 6. Testing the System
@@ -468,10 +552,11 @@ Expected response:
 2. Check if notifications appear in the database
 3. Verify email delivery
 
-#### Test 3: GitHub Actions Test
-1. Go to Actions tab in GitHub
-2. Run "Send 24h Reminders" workflow manually
-3. Check the logs for success
+#### Test 3: Cron-job.org Test
+1. Go to your cron-job.org dashboard
+2. Find your "Myowntour 24h Reminders" job
+3. Click "Test now" to run manually
+4. Check the execution logs for success
 
 ### 7. Monitoring and Analytics
 
@@ -541,10 +626,11 @@ SELECT send_24h_reminders();
 - Check browser console for errors
 - Test email templates manually
 
-**4. GitHub Actions Failing**
-- Check repository secrets are set
-- Verify Supabase access token has correct permissions
-- Check workflow logs for specific errors
+**4. Cron-job.org Failing**
+- Check cron job configuration in dashboard
+- Verify URL and headers are exactly correct
+- Check execution logs for specific errors
+- Ensure Edge Function is deployed and accessible
 
 #### Debug Commands
 ```bash
@@ -562,7 +648,7 @@ supabase functions logs send-reminders --follow
 
 - [ ] Database migration executed successfully
 - [ ] Edge Function deployed and tested
-- [ ] GitHub Actions workflow working
+- [ ] Cron-job.org setup working
 - [ ] Resend API key configured
 - [ ] Environment variables set correctly
 - [ ] Notification preferences working
@@ -620,7 +706,7 @@ Your notification system is now fully operational with:
 - ✅ **Automated 24h reminders** via Supabase Edge Functions
 - ✅ **Real-time notifications** for all booking events
 - ✅ **Email and in-app delivery** with professional templates
-- ✅ **GitHub Actions automation** for reliable scheduling
+- ✅ **Cron-job.org automation** for reliable scheduling
 - ✅ **Complete monitoring and analytics**
 - ✅ **Production-ready error handling**
 
