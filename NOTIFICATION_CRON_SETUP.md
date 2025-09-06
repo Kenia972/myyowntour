@@ -44,7 +44,31 @@ supabase functions deploy send-email
 supabase functions deploy send-reminders
 ```
 
-### Step 5: Set Up Cron-job.org (24h Reminders)
+**Important:** Make sure both functions are deployed successfully before proceeding!
+
+### Step 5: Verify Edge Functions Are Working
+Test both functions to ensure they're deployed correctly:
+
+```bash
+# Test the email function
+curl -X POST \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec" \
+  -H "Content-Type: application/json" \
+  -d '{"to": "test@resend.dev", "subject": "Test Email", "type": "html", "html": "<h1>Test from Myowntour</h1>"}' \
+  https://nbjuhxzjgegjvigsstljy.supabase.co/functions/v1/send-email
+
+# Test the reminders function
+curl -X POST \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec" \
+  -H "Content-Type: application/json" \
+  https://nbjuhxzjgegjvigsstljy.supabase.co/functions/v1/send-reminders
+```
+
+**Expected results:**
+- **Email function:** `{"success": true, "message": "Email sent successfully", "resend_id": "..."}`
+- **Reminders function:** `{"success": true, "count": 0, "message": "Sent 0 reminder notifications"}`
+
+### Step 6: Set Up Cron-job.org (24h Reminders)
 1. **Go to [cron-job.org](https://cron-job.org/)**
 2. **Create a free account**
 3. **Add a new cron job:**
@@ -57,25 +81,25 @@ supabase functions deploy send-reminders
    - **Schedule:** `0 9 * * *` (daily at 9 AM UTC)
 4. **Test the cron job immediately**
 
-### Step 6: Verify Domain with Resend (Production Setup)
+### Step 7: Verify Domain with Resend (Production Setup)
 
 #### **A. Add Domain to Resend**
 1. **Go to [Resend Dashboard](https://resend.com/domains)**
 2. **Click "Add Domain"**
-3. **Enter your domain:** `myowntour.com`
+3. **Enter your domain:** `myowntour.app`
 4. **Click "Add"**
 
 #### **B. Add DNS Records in Ionos**
 1. **Log into your Ionos control panel**
 2. **Go to "Domains & SSL" → "DNS"**
-3. **Select your domain:** `myowntour.com`
+3. **Select your domain:** `myowntour.app`
 4. **Add these DNS records:**
 
    **TXT Record for Verification:**
    ```
    Type: TXT
    Name: @ (or leave empty)
-   Value: resend._domainkey.myowntour.com
+   Value: resend._domainkey.myowntour.app
    TTL: 3600
    ```
 
@@ -94,14 +118,16 @@ supabase functions deploy send-reminders
 4. **Status should change to "Verified"**
 
 #### **D. Update Edge Function for Production**
-Once verified, update your Edge Function to use your domain:
+Once verified, redeploy your Edge Function to use your domain:
 
-```typescript
-// In supabase/functions/send-email/index.ts
-from: 'Myowntour <noreply@myowntour.com>',
+```bash
+# Redeploy the email function with your domain
+supabase functions deploy send-email
 ```
 
-### Step 7: Test the System
+**Note:** The Edge Function is already configured to use `noreply@myowntour.app` - just needs to be redeployed after domain verification.
+
+### Step 8: Test the System
 ```bash
 # Test the Edge Function
 curl -X POST \

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, Building, ArrowLeft } from 'lucide-react';
-import { EmailService } from '../../services/emailService';
+import { ResendEmailService } from '../../services/resendEmailService';
 import { useAuth } from '../../contexts/AuthContext';
 
-// Initialiser EmailJS
-EmailService.init();
+// Initialize Resend Email Service
+const emailService = new ResendEmailService();
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -51,7 +51,7 @@ export function AuthModal({
 
   const sendWelcomeEmail = async (userData: any) => {
     try {
-      await EmailService.sendWelcomeEmail({
+      await emailService.sendWelcomeEmail({
         email: userData.email,
         firstName: userData.firstName,
         lastName: userData.lastName,
@@ -71,7 +71,7 @@ export function AuthModal({
     setSuccess(null);
 
     try {
-      await EmailService.sendPasswordResetEmail(formData.resetEmail);
+      await emailService.sendPasswordResetEmail(formData.resetEmail);
       setSuccess('Un email de récupération a été envoyé à votre adresse email.');
       
       // Retour au mode connexion après 3 secondes

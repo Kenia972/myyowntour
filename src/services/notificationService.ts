@@ -107,14 +107,24 @@ export class NotificationService {
       };
 
       // Save to database
+      console.log('🔔 Attempting to save notification:', {
+        userId,
+        type,
+        title: notification.title,
+        channel
+      });
+
       const { error: dbError } = await supabase!
         .from('notifications')
         .insert(notification);
 
       if (dbError) {
-        console.error('Error saving notification:', dbError);
+        console.error('❌ Error saving notification:', dbError);
+        console.error('❌ Full error details:', JSON.stringify(dbError, null, 2));
         return { success: false, error: dbError.message };
       }
+
+      console.log('✅ Notification saved successfully');
 
       // Send email if requested
       if (channel === 'email' || channel === 'both') {
@@ -147,10 +157,24 @@ export class NotificationService {
         return;
       }
 
-      // Send email using Resend based on notification type
-      const emailSent = await this.sendResendEmail(profile, template, data);
-      if (!emailSent) {
-        console.warn('Failed to send email notification for user:', userId);
+      // Send email using Edge Function
+      const emailData = {
+        to: profile.email,
+        subject: template.title,
+        html: template.html || template.message,
+        type: 'html'
+      };
+
+      console.log('📧 Sending email via Edge Function:', emailData);
+
+      const { error } = await supabase!.functions.invoke('send-email', {
+        body: emailData
+      });
+
+      if (error) {
+        console.error('❌ Error sending email:', error);
+      } else {
+        console.log('✅ Email sent successfully');
       }
     } catch (error) {
       console.error('Error sending email notification:', error);

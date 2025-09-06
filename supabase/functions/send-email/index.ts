@@ -101,7 +101,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Myowntour <onboarding@resend.dev>',
+        from: 'Myowntour <noreply@myowntour.app>',
         to: [to],
         subject,
         html,
@@ -223,12 +223,12 @@ function generateWelcomeEmailHTML(data: WelcomeEmailData): string {
         </div>
 
         <div style="text-align: center;">
-          <a href="https://resend.dev" class="button">🚀 Commencer maintenant</a>
+          <a href="https://myowntour.app" class="button">🚀 Commencer maintenant</a>
         </div>
 
         <div class="footer">
           <p><strong>Besoin d'aide ?</strong><br>
-          📧 contact@resend.dev<br>
+          📧 contact@myowntour.app<br>
           📞 +596 696 XX XX XX</p>
           <p>Merci de nous faire confiance !<br>
           <strong>L'équipe Myowntour</strong></p>
@@ -308,7 +308,7 @@ function generateBookingConfirmationHTML(data: BookingEmailData): string {
 
         <div class="footer">
           <p><strong>Besoin d'aide ?</strong><br>
-          📧 contact@resend.dev<br>
+          📧 contact@myowntour.app<br>
           📞 +596 696 XX XX XX</p>
           <p>Merci de votre confiance !<br>
           <strong>L'équipe Myowntour</strong></p>
@@ -379,7 +379,7 @@ function generateReminderHTML(data: ReminderEmailData): string {
 
         <div class="footer">
           <p><strong>Besoin d'aide ?</strong><br>
-          📧 contact@resend.dev<br>
+          📧 contact@myowntour.app<br>
           📞 +596 696 XX XX XX</p>
           <p>Profitez bien de votre excursion !<br>
           <strong>L'équipe Myowntour</strong></p>

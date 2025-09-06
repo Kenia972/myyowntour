@@ -41,6 +41,12 @@ CREATE POLICY "Users can view their own notifications" ON notifications
 CREATE POLICY "Users can update their own notifications" ON notifications
     FOR UPDATE USING (user_id = auth.uid());
 
+CREATE POLICY "System can insert notifications" ON notifications
+    FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Users can insert their own notifications" ON notifications
+    FOR INSERT WITH CHECK (user_id = auth.uid());
+
 -- Grant permissions
 GRANT ALL ON notifications TO authenticated;
 
