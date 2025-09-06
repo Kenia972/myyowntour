@@ -1,0 +1,78 @@
+name: Send 24h Reminders
+
+on:
+  schedule:
+    # Run daily at 9 AM UTC (5 AM Martinique time)
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      test_mode:
+        description: 'Test mode (dry run)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.40.0
+
+      - name: Deploy Supabase Edge Function
+        run: |
+          # Install Supabase CLI
+          curl -fsSL https://supabase.com/install.sh | sh
+          export PATH="$PATH:$HOME/.local/bin"
+          
+          # Deploy the function
+          supabase functions deploy send-reminders --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Trigger 24h Reminders
+        run: |
+          # Install Supabase CLI
+          curl -fsSL https://supabase.com/install.sh | sh
+          export PATH="$PATH:$HOME/.local/bin"
+          
+          # Call the Edge Function
+          response=$(curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/send-reminders)
+          
+          echo "Response: $response"
+          
+          # Parse response and check for success
+          success=$(echo $response | jq -r '.success // false')
+          count=$(echo $response | jq -r '.count // 0')
+          
+          if [ "$success" = "true" ]; then
+            echo "✅ Successfully sent $count reminder notifications"
+          else
+            echo "❌ Failed to send reminders"
+            echo "Error: $response"
+            exit 1
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Send Success Notification
+        if: success()
+        run: |
+          echo "📧 24h reminders sent successfully!"
+          # You can add Slack/Discord notifications here if needed
+
+      - name: Send Failure Notification
+        if: failure()
+        run: |
+          echo "❌ Failed to send 24h reminders!"
+          # You can add Slack/Discord notifications here if needed

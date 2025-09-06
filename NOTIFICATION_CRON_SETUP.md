@@ -1,0 +1,633 @@
+# 🚀 Myowntour Notification System - Complete Setup Guide
+
+## Overview
+
+This guide provides **complete setup instructions** for the Myowntour notification system using **Supabase Edge Functions** (Option 1). The system includes:
+
+- ✅ **Real-time notifications** for booking events
+- ✅ **24-hour automated reminders** via Edge Functions
+- ✅ **Email and in-app notifications**
+- ✅ **GitHub Actions automation**
+- ✅ **Complete monitoring and analytics**
+
+## 🎯 Quick Start (5 Minutes)
+
+### Step 1: Run the Setup Script
+```bash
+# Make the script executable (if not already done)
+chmod +x setup-notifications.sh
+
+# Run the automated setup
+./setup-notifications.sh
+```
+
+### Step 2: Configure Environment Variables
+Update your `.env.local` file:
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### Step 3: Deploy Database Migration
+Run this SQL in your Supabase SQL Editor:
+```sql
+-- Copy and paste the entire NOTIFICATION_SYSTEM_MIGRATION.sql content
+```
+
+### Step 4: Deploy Edge Functions
+```bash
+# Deploy the email sending function
+supabase functions deploy send-email
+
+# Deploy the reminder function
+supabase functions deploy send-reminders
+```
+
+### Step 5: Test the System
+```bash
+# Test the Edge Function
+curl -X POST \
+  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-reminders
+```
+
+**That's it! Your notification system is now live! 🎉**
+
+---
+
+## 📋 Detailed Setup Instructions
+
+### 1. Prerequisites
+
+#### Required Software
+- **Node.js** (v18+)
+- **Supabase CLI** (latest)
+- **Deno** (v1.40+)
+- **Git** (for GitHub Actions)
+
+#### Install Supabase CLI
+```bash
+# macOS
+brew install supabase/tap/supabase
+
+# Linux
+curl -fsSL https://supabase.com/install.sh | sh
+
+# Windows
+# Download from: https://github.com/supabase/cli/releases
+```
+
+#### Install Deno
+```bash
+# macOS
+brew install deno
+
+# Linux
+curl -fsSL https://deno.land/install.sh | sh
+
+# Windows
+# Download from: https://deno.land/manual/getting_started/installation
+```
+
+### 2. Database Setup
+
+#### Step 1: Run Migration
+Execute the complete migration in your Supabase SQL Editor:
+
+```sql
+-- =====================================================
+-- NOTIFICATION SYSTEM MIGRATION FOR MYOWNTOUR
+-- =====================================================
+
+-- Create notifications table
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN (
+        'booking_created', 
+        'booking_updated', 
+        'booking_cancelled', 
+        'reminder_24h', 
+        'checkin_success', 
+        'booking_confirmed'
+    )),
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB DEFAULT '{}',
+    is_read BOOLEAN DEFAULT FALSE,
+    channel TEXT NOT NULL CHECK (channel IN ('email', 'in_app', 'both')) DEFAULT 'both',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read) WHERE is_read = FALSE;
+
+-- Enable RLS
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users can view their own notifications" ON notifications
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Users can update their own notifications" ON notifications
+    FOR UPDATE USING (user_id = auth.uid());
+
+-- Grant permissions
+GRANT ALL ON notifications TO authenticated;
+
+-- Create function to automatically update updated_at
+CREATE OR REPLACE FUNCTION update_notifications_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for updated_at
+CREATE TRIGGER trigger_update_notifications_updated_at
+    BEFORE UPDATE ON notifications
+    FOR EACH ROW
+    EXECUTE FUNCTION update_notifications_updated_at();
+
+-- Create function to send 24h reminders
+CREATE OR REPLACE FUNCTION send_24h_reminders()
+RETURNS INTEGER AS $$
+DECLARE
+    tomorrow_date DATE;
+    booking_record RECORD;
+    client_notifications_count INTEGER := 0;
+    guide_notifications_count INTEGER := 0;
+BEGIN
+    -- Get tomorrow's date
+    tomorrow_date := CURRENT_DATE + INTERVAL '1 day';
+    
+    -- Create notifications for clients
+    FOR booking_record IN
+        SELECT 
+            b.id as booking_id,
+            b.client_id,
+            b.participants_count,
+            b.checkin_token,
+            e.title as excursion_title,
+            s.date as excursion_date,
+            s.start_time as excursion_time,
+            p.first_name,
+            p.last_name,
+            p.email
+        FROM bookings b
+        JOIN excursions e ON b.excursion_id = e.id
+        JOIN availability_slots s ON b.slot_id = s.id
+        JOIN profiles p ON b.client_id = p.id
+        WHERE s.date = tomorrow_date
+        AND b.status = 'confirmed'
+    LOOP
+        -- Insert client notification
+        INSERT INTO notifications (
+            user_id,
+            type,
+            title,
+            message,
+            data,
+            channel
+        ) VALUES (
+            booking_record.client_id,
+            'reminder_24h',
+            'Rappel - Excursion demain',
+            'N''oubliez pas votre excursion demain ! Votre QR code est prêt pour le check-in.',
+            json_build_object(
+                'recipient_type', 'client',
+                'booking_id', booking_record.booking_id,
+                'excursion_title', booking_record.excursion_title,
+                'excursion_date', booking_record.excursion_date,
+                'excursion_time', booking_record.excursion_time,
+                'participants_count', booking_record.participants_count,
+                'checkin_token', booking_record.checkin_token
+            ),
+            'both'
+        );
+        
+        client_notifications_count := client_notifications_count + 1;
+    END LOOP;
+    
+    -- Create notifications for guides (grouped by guide)
+    FOR booking_record IN
+        SELECT 
+            g.user_id as guide_user_id,
+            e.title as excursion_title,
+            s.date as excursion_date,
+            s.start_time as excursion_time,
+            COUNT(b.id) as total_bookings,
+            SUM(b.participants_count) as total_participants
+        FROM bookings b
+        JOIN excursions e ON b.excursion_id = e.id
+        JOIN availability_slots s ON b.slot_id = s.id
+        JOIN guides g ON e.guide_id = g.id
+        WHERE s.date = tomorrow_date
+        AND b.status = 'confirmed'
+        GROUP BY g.user_id, e.title, s.date, s.start_time
+    LOOP
+        -- Insert guide notification
+        INSERT INTO notifications (
+            user_id,
+            type,
+            title,
+            message,
+            data,
+            channel
+        ) VALUES (
+            booking_record.guide_user_id,
+            'reminder_24h',
+            'Rappel - Excursion demain',
+            'Vous avez une excursion demain avec des participants à accueillir.',
+            json_build_object(
+                'recipient_type', 'guide',
+                'excursion_title', booking_record.excursion_title,
+                'excursion_date', booking_record.excursion_date,
+                'excursion_time', booking_record.excursion_time,
+                'total_bookings', booking_record.total_bookings,
+                'total_participants', booking_record.total_participants
+            ),
+            'both'
+        );
+        
+        guide_notifications_count := guide_notifications_count + 1;
+    END LOOP;
+    
+    RETURN client_notifications_count + guide_notifications_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permission on the function
+GRANT EXECUTE ON FUNCTION send_24h_reminders() TO authenticated;
+
+-- Create function to get notification statistics
+CREATE OR REPLACE FUNCTION get_notification_stats(p_user_id UUID)
+RETURNS JSON AS $$
+DECLARE
+    result JSON;
+BEGIN
+    SELECT json_build_object(
+        'total_notifications', COUNT(*),
+        'unread_count', COUNT(*) FILTER (WHERE is_read = FALSE),
+        'by_type', json_object_agg(type, type_count)
+    ) INTO result
+    FROM (
+        SELECT 
+            type,
+            COUNT(*) as type_count
+        FROM notifications
+        WHERE user_id = p_user_id
+        GROUP BY type
+    ) stats;
+    
+    RETURN COALESCE(result, '{"total_notifications": 0, "unread_count": 0, "by_type": {}}'::json);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permission
+GRANT EXECUTE ON FUNCTION get_notification_stats(UUID) TO authenticated;
+
+-- Create function to mark all notifications as read
+CREATE OR REPLACE FUNCTION mark_all_notifications_read(p_user_id UUID)
+RETURNS INTEGER AS $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    UPDATE notifications
+    SET is_read = TRUE, updated_at = NOW()
+    WHERE user_id = p_user_id AND is_read = FALSE;
+    
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permission
+GRANT EXECUTE ON FUNCTION mark_all_notifications_read(UUID) TO authenticated;
+
+-- Create function to clean up old notifications
+CREATE OR REPLACE FUNCTION cleanup_old_notifications()
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM notifications
+    WHERE created_at < NOW() - INTERVAL '30 days';
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permission
+GRANT EXECUTE ON FUNCTION cleanup_old_notifications() TO authenticated;
+
+-- Add notification preferences to profiles table
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS notification_preferences JSONB DEFAULT '{
+    "email_notifications": true,
+    "in_app_notifications": true,
+    "booking_created": true,
+    "booking_confirmed": true,
+    "booking_cancelled": true,
+    "reminder_24h": true,
+    "checkin_success": true
+}'::jsonb;
+
+-- Create index on notification preferences
+CREATE INDEX IF NOT EXISTS idx_profiles_notification_preferences ON profiles USING GIN (notification_preferences);
+```
+
+#### Step 2: Verify Database Setup
+```sql
+-- Check if tables exist
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public' 
+AND table_name = 'notifications';
+
+-- Check if functions exist
+SELECT routine_name FROM information_schema.routines 
+WHERE routine_schema = 'public' 
+AND routine_name LIKE '%notification%';
+```
+
+### 3. Supabase Edge Functions Setup
+
+#### Step 1: Login to Supabase
+```bash
+supabase login
+```
+
+#### Step 2: Link Your Project
+```bash
+supabase link --project-ref YOUR_PROJECT_REF
+```
+
+#### Step 3: Deploy the Edge Function
+```bash
+supabase functions deploy send-reminders
+```
+
+#### Step 4: Test the Function
+```bash
+# Test locally
+supabase functions serve send-reminders
+
+# Test deployed function
+curl -X POST \
+  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-reminders
+```
+
+### 4. GitHub Actions Setup
+
+#### Step 1: Add Repository Secrets
+Go to your GitHub repository → Settings → Secrets and variables → Actions
+
+Add these secrets:
+- `SUPABASE_PROJECT_REF`: Your Supabase project reference
+- `SUPABASE_ACCESS_TOKEN`: Your Supabase access token
+- `SUPABASE_ANON_KEY`: Your Supabase anonymous key
+
+#### Step 2: Verify Workflow File
+The workflow file `.github/workflows/send-reminders.yml` is already created and ready to use.
+
+#### Step 3: Test GitHub Actions
+1. Go to your repository's Actions tab
+2. Find "Send 24h Reminders" workflow
+3. Click "Run workflow" to test manually
+
+### 5. Resend Configuration
+
+#### Step 1: Create Resend Account
+1. Go to [Resend.com](https://resend.com/)
+2. Sign up for a free account (100,000 emails/month FREE!)
+3. Get your API key from the dashboard
+4. Note your API key (starts with `re_`)
+
+#### Step 2: Email Templates (Already Created)
+
+✅ **All email templates are already created in the code!**
+
+The following templates are built into the Resend service:
+- 🎯 **Welcome Emails** - Client, Guide, Tour Operator
+- 📧 **Booking Confirmation** - Detailed booking information
+- ⏰ **24h Reminders** - Excursion reminders
+- 🔐 **Password Reset** - Secure password recovery
+
+**No manual template creation needed!** The templates are:
+- ✅ **Professional design** with gradients and icons
+- ✅ **Mobile responsive** layouts
+- ✅ **Role-based colors** for different user types
+- ✅ **Detailed information** with booking data
+#### Step 3: Configure Supabase Edge Function
+Add the Resend API key to your Supabase Edge Function environment:
+
+1. Go to your Supabase Dashboard
+2. Navigate to **Settings > Edge Functions**
+3. Add environment variable:
+   - **Key:** `RESEND_API_KEY`
+   - **Value:** `re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+#### Step 4: Update Environment Variables
+```env
+VITE_RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 6. Testing the System
+
+#### Test 1: Manual Edge Function Test
+```bash
+curl -X POST \
+  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-reminders
+```
+
+Expected response:
+```json
+{
+  "success": true,
+  "count": 5,
+  "message": "Sent 5 reminder notifications",
+  "timestamp": "2024-01-15T09:00:00.000Z"
+}
+```
+
+#### Test 2: Create Test Booking
+1. Create a booking for tomorrow
+2. Check if notifications appear in the database
+3. Verify email delivery
+
+#### Test 3: GitHub Actions Test
+1. Go to Actions tab in GitHub
+2. Run "Send 24h Reminders" workflow manually
+3. Check the logs for success
+
+### 7. Monitoring and Analytics
+
+#### Database Queries for Monitoring
+```sql
+-- Check notification counts by type
+SELECT type, COUNT(*) as count
+FROM notifications
+WHERE created_at >= NOW() - INTERVAL '7 days'
+GROUP BY type;
+
+-- Check unread notifications
+SELECT user_id, COUNT(*) as unread_count
+FROM notifications
+WHERE is_read = false
+GROUP BY user_id;
+
+-- Check 24h reminder performance
+SELECT 
+  DATE(created_at) as date,
+  COUNT(*) as reminders_sent
+FROM notifications
+WHERE type = 'reminder_24h'
+GROUP BY DATE(created_at)
+ORDER BY date DESC;
+```
+
+#### Edge Function Logs
+```bash
+# View function logs
+supabase functions logs send-reminders
+
+# View real-time logs
+supabase functions logs send-reminders --follow
+```
+
+### 8. Troubleshooting
+
+#### Common Issues
+
+**1. Edge Function Not Deploying**
+```bash
+# Check if you're logged in
+supabase projects list
+
+# Check function status
+supabase functions list
+
+# Redeploy function
+supabase functions deploy send-reminders --no-verify-jwt
+```
+
+**2. Database Functions Not Working**
+```sql
+-- Check if functions exist
+SELECT routine_name FROM information_schema.routines 
+WHERE routine_schema = 'public' 
+AND routine_name LIKE '%notification%';
+
+-- Test function manually
+SELECT send_24h_reminders();
+```
+
+**3. Email Not Sending**
+- Check Resend configuration
+- Verify template IDs match
+- Check browser console for errors
+- Test email templates manually
+
+**4. GitHub Actions Failing**
+- Check repository secrets are set
+- Verify Supabase access token has correct permissions
+- Check workflow logs for specific errors
+
+#### Debug Commands
+```bash
+# Test Edge Function locally
+supabase functions serve send-reminders --no-verify-jwt
+
+# Check Supabase connection
+supabase status
+
+# View function logs
+supabase functions logs send-reminders --follow
+```
+
+### 9. Production Checklist
+
+- [ ] Database migration executed successfully
+- [ ] Edge Function deployed and tested
+- [ ] GitHub Actions workflow working
+- [ ] Resend API key configured
+- [ ] Environment variables set correctly
+- [ ] Notification preferences working
+- [ ] Real-time notifications working
+- [ ] 24h reminders automated
+- [ ] Error handling implemented
+- [ ] Monitoring set up
+
+### 10. Advanced Configuration
+
+#### Custom Notification Times
+To change reminder timing, modify the cron schedule in `.github/workflows/send-reminders.yml`:
+```yaml
+schedule:
+  - cron: '0 9 * * *'  # 9 AM UTC daily
+  - cron: '0 18 * * *' # 6 PM UTC daily (for evening reminders)
+```
+
+#### Custom Email Templates
+Add new email templates in the Resend service code:
+```typescript
+// Add new template to notificationService.ts
+private static templates: Record<string, NotificationTemplate> = {
+  // ... existing templates
+  custom_notification: {
+    title: "Custom Title",
+    message: "Custom message",
+    email_subject: "Custom Subject",
+    email_template: "custom_template"
+  }
+};
+```
+
+#### Notification Preferences
+Users can customize their preferences:
+```typescript
+// Update user preferences
+const preferences = {
+  email_notifications: true,
+  in_app_notifications: true,
+  booking_created: true,
+  booking_confirmed: true,
+  booking_cancelled: false, // User disabled
+  reminder_24h: true,
+  checkin_success: true
+}
+```
+
+---
+
+## 🎉 You're All Set!
+
+Your notification system is now fully operational with:
+
+- ✅ **Automated 24h reminders** via Supabase Edge Functions
+- ✅ **Real-time notifications** for all booking events
+- ✅ **Email and in-app delivery** with professional templates
+- ✅ **GitHub Actions automation** for reliable scheduling
+- ✅ **Complete monitoring and analytics**
+- ✅ **Production-ready error handling**
+
+The system will automatically:
+1. Send 24h reminders every day at 9 AM UTC
+2. Notify users of booking events in real-time
+3. Clean up old notifications automatically
+4. Handle errors gracefully without affecting core functionality
+
+For support or questions, check the troubleshooting section or review the logs! 🚀
