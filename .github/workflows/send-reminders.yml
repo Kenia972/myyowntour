@@ -20,21 +20,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Setup Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.40.0
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
       - name: Deploy Supabase Edge Function
         run: |
-          # Install Supabase CLI using npm
-          npm install -g supabase
-          
           # Deploy the function
           supabase functions deploy send-reminders --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         env:
