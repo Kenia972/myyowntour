@@ -4,13 +4,7 @@ on:
   schedule:
     # Run daily at 9 AM UTC (5 AM Martinique time)
     - cron: '0 9 * * *'
-  workflow_dispatch: # Allow manual trigger
-    inputs:
-      test_mode:
-        description: 'Test mode (dry run)'
-        required: false
-        default: 'false'
-        type: boolean
+  workflow_dispatch:
 
 jobs:
   send-reminders:
@@ -20,15 +14,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Trigger 24h Reminders
+      - name: Trigger 24h Reminders (TEST MODE - hardcoded keys)
         run: |
           echo "📡 Calling Supabase Edge Function..."
 
+          SUPABASE_URL="https://nbjuhxzjgegjvigstljy.supabase.co"
+          SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4NjUwMzAsImV4cCI6MjA3MTQ0MTAzMH0.9ZGYw5f1_HYXftiymb7pZqrbM1-VFb2nATcSgOVkTec"
+          SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ianVoeHpqZ2VnanZpZ3N0bGp5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTg2NTAzMCwiZXhwIjoyMDcxNDQxMDMwfQ.5wA-CXjWxN1nUI8KCZcpm8xWR--CxTvCuxDY6531rKw"
+
+          URL="$SUPABASE_URL/functions/v1/send-reminders"
+          echo "Calling URL: $URL"
+
           response=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Content-Type: application/json" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/send-reminders)
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            "$URL")
 
           echo "Response: $response"
 
@@ -50,4 +51,5 @@ jobs:
       - name: Send Failure Notification
         if: failure()
         run: echo "❌ Failed to send 24h reminders!"
+
 
